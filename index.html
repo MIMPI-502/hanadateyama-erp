@@ -1,0 +1,1638 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>花立山養鰻 統合ERPシステム</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;800&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0a0f0d;color:#e8f5ec;}
+select option{background:#111a15;color:#e8f5ec;}
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:#111a15;}
+::-webkit-scrollbar-thumb{background:#1e3326;border-radius:3px;}
+@media(max-width:700px){
+  .sidebar{display:none!important;}
+  .main-content{margin-left:0!important;}
+  .mobile-nav{display:flex!important;}
+}
+.mobile-nav{display:none;position:fixed;bottom:0;left:0;right:0;background:#111a15;border-top:1px solid #1e3326;z-index:200;overflow-x:auto;padding:6px 4px;}
+.mobile-nav button{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 10px;background:none;border:none;color:#7aa885;font-size:10px;cursor:pointer;}
+.mobile-nav button.active{color:#2ecc71;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+
+
+// ============================================================
+// DESIGN TOKENS
+// ============================================================
+const COLORS = {
+  bg: "#0a0f0d",
+  surface: "#111a15",
+  card: "#162019",
+  border: "#1e3326",
+  accent: "#2ecc71",
+  accentDim: "#1a7a40",
+  accentGlow: "rgba(46,204,113,0.15)",
+  text: "#e8f5ec",
+  textMuted: "#7aa885",
+  textDim: "#4a7055",
+  warning: "#f0a500",
+  danger: "#e74c3c",
+  info: "#3498db",
+  gold: "#d4af37",
+};
+
+// ============================================================
+// MOCK DATA
+// ============================================================
+const INITIAL_DATA = {
+  pools: [
+    { id: "P01", name: "第1池", capacity: 10000, current: 8200, weight: 820, status: "normal" },
+    { id: "P02", name: "第2池", capacity: 10000, current: 7500, weight: 750, status: "normal" },
+    { id: "P03", name: "第3池", capacity: 8000, current: 6100, weight: 610, status: "warning" },
+    { id: "P04", name: "第4池（杉樽）", capacity: 5000, current: 4200, weight: 420, status: "normal" },
+    { id: "P05", name: "委託池（イールF）", capacity: 12000, current: 9800, weight: 980, status: "normal" },
+  ],
+  stockRecords: [
+    { id: "SI001", date: "2026-04-15", supplier: "福岡淡水株式会社", pool: "P01", lot: "L2026-041", qty: 2000, kg: 200, avgSize: "100g", staff: "田中" },
+    { id: "SI002", date: "2026-05-10", supplier: "福岡淡水株式会社", pool: "P02", lot: "L2026-051", qty: 1500, kg: 150, avgSize: "100g", staff: "山田" },
+    { id: "SI003", date: "2026-05-28", supplier: "愛知養鰻", pool: "P03", lot: "L2026-052", qty: 1200, kg: 120, avgSize: "100g", staff: "田中" },
+  ],
+  shippingRecords: [
+    { id: "SH001", date: "2026-05-20", destination: "タイセイ株式会社", pool: "P01", lot: "L2026-041", qty: 500, kg: 250, price: 375000 },
+    { id: "SH002", date: "2026-05-25", destination: "地域総合促進機構", pool: "P02", lot: "L2026-051", qty: 300, kg: 150, price: 225000 },
+  ],
+  deathRecords: [
+    { id: "D001", date: "2026-05-18", pool: "P03", count: 45, cause: "水質悪化（暫定）", staff: "山田" },
+    { id: "D002", date: "2026-05-29", pool: "P01", count: 12, cause: "原因不明", staff: "田中" },
+  ],
+  waterQuality: [
+    { date: "2026-06-01", pool: "P01", temp: 24.5, ph: 7.2, do: 8.1, nh3: 0.02, no2: 0.05, salt: 0.3, exchange: 20 },
+    { date: "2026-06-02", pool: "P01", temp: 24.8, ph: 7.1, do: 7.9, nh3: 0.03, no2: 0.06, salt: 0.3, exchange: 20 },
+    { date: "2026-06-03", pool: "P01", temp: 25.1, ph: 7.3, do: 8.3, nh3: 0.02, no2: 0.04, salt: 0.3, exchange: 25 },
+    { date: "2026-06-04", pool: "P01", temp: 25.0, ph: 7.2, do: 8.0, nh3: 0.03, no2: 0.05, salt: 0.3, exchange: 20 },
+    { date: "2026-06-05", pool: "P01", temp: 24.9, ph: 7.2, do: 8.2, nh3: 0.02, no2: 0.05, salt: 0.3, exchange: 20 },
+  ],
+  permit: {
+    number: "FKO-2026-0042",
+    year: 2026,
+    annual: 50000,
+    used: 32000,
+    expiry: "2027-03-31",
+  },
+  medicines: [
+    { id: "M001", name: "フラボマイシン", pool: "P03", useDate: "2026-05-15", amount: "50g", purpose: "腸炎治療", withdrawDays: 21, clearDate: "2026-06-05", status: "active" },
+    { id: "M002", name: "OTC薬A", pool: "P01", useDate: "2026-04-20", amount: "30g", purpose: "予防投与", withdrawDays: 14, clearDate: "2026-05-04", status: "cleared" },
+  ],
+  subsidies: [
+    { id: "SB001", name: "令和6年度水産業強化補助金", equipment: "杉樽設備一式", orderDate: "2026-01-15", deliveryDate: "2026-03-20", paymentDate: "2026-03-25", amount: 2500000, status: "completed" },
+  ],
+};
+
+const PERMIT_PCT = Math.round((INITIAL_DATA.permit.used / INITIAL_DATA.permit.annual) * 100);
+const TOTAL_STOCK = INITIAL_DATA.pools.reduce((s, p) => s + p.current, 0);
+const MONTHLY_DEATH_RATE = 0.28; // %
+
+// ============================================================
+// UTILITY COMPONENTS
+// ============================================================
+const Badge = ({ color, children }) => {
+  const colorMap = {
+    green: { bg: "rgba(46,204,113,0.15)", text: "#2ecc71", border: "rgba(46,204,113,0.3)" },
+    yellow: { bg: "rgba(240,165,0,0.15)", text: "#f0a500", border: "rgba(240,165,0,0.3)" },
+    red: { bg: "rgba(231,76,60,0.15)", text: "#e74c3c", border: "rgba(231,76,60,0.3)" },
+    blue: { bg: "rgba(52,152,219,0.15)", text: "#3498db", border: "rgba(52,152,219,0.3)" },
+    gold: { bg: "rgba(212,175,55,0.15)", text: "#d4af37", border: "rgba(212,175,55,0.3)" },
+  };
+  const c = colorMap[color] || colorMap.green;
+  return (
+    <span style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}`, padding: "2px 10px", borderRadius: 99, fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>
+      {children}
+    </span>
+  );
+};
+
+const StatCard = ({ icon, label, value, sub, color = COLORS.accent, onClick }) => (
+  <div onClick={onClick} style={{
+    background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "20px 22px",
+    cursor: onClick ? "pointer" : "default", transition: "border-color 0.2s, box-shadow 0.2s",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+  }}
+    onMouseEnter={e => { if (onClick) { e.currentTarget.style.borderColor = color; e.currentTarget.style.boxShadow = `0 4px 20px rgba(46,204,113,0.12)`; } }}
+    onMouseLeave={e => { e.currentTarget.style.borderColor = COLORS.border; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)"; }}
+  >
+    <div style={{ fontSize: 22, marginBottom: 8 }}>{icon}</div>
+    <div style={{ fontSize: 28, fontWeight: 800, color, fontFamily: "'Courier New', monospace", letterSpacing: -1 }}>{value}</div>
+    <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>{label}</div>
+    {sub && <div style={{ fontSize: 11, color: COLORS.textDim, marginTop: 2 }}>{sub}</div>}
+  </div>
+);
+
+const SectionHeader = ({ title, sub }) => (
+  <div style={{ marginBottom: 20 }}>
+    <h2 style={{ fontSize: 18, fontWeight: 800, color: COLORS.text, margin: 0, letterSpacing: 0.5 }}>{title}</h2>
+    {sub && <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>{sub}</div>}
+  </div>
+);
+
+const Table = ({ cols, rows, emptyMsg = "データなし" }) => (
+  <div style={{ overflowX: "auto" }}>
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <thead>
+        <tr style={{ borderBottom: `2px solid ${COLORS.border}` }}>
+          {cols.map(c => (
+            <th key={c.key} style={{ padding: "10px 12px", textAlign: "left", color: COLORS.textMuted, fontWeight: 700, fontSize: 11, letterSpacing: 0.8, whiteSpace: "nowrap" }}>
+              {c.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.length === 0 ? (
+          <tr><td colSpan={cols.length} style={{ textAlign: "center", padding: 32, color: COLORS.textDim }}>{emptyMsg}</td></tr>
+        ) : rows.map((row, i) => (
+          <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}
+            onMouseEnter={e => e.currentTarget.style.background = COLORS.accentGlow}
+            onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+          >
+            {cols.map(c => (
+              <td key={c.key} style={{ padding: "10px 12px", color: c.color ? c.color(row) : COLORS.text, whiteSpace: "nowrap" }}>
+                {c.render ? c.render(row) : row[c.key]}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+);
+
+const ProgressBar = ({ pct, color = COLORS.accent, height = 8 }) => (
+  <div style={{ background: COLORS.border, borderRadius: 99, height, overflow: "hidden" }}>
+    <div style={{ width: `${Math.min(pct, 100)}%`, height: "100%", background: color, borderRadius: 99, transition: "width 0.5s ease" }} />
+  </div>
+);
+
+const FormInput = ({ label, value, onChange, type = "text", required }) => (
+  <div style={{ marginBottom: 14 }}>
+    <label style={{ display: "block", fontSize: 11, color: COLORS.textMuted, marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>
+      {label}{required && <span style={{ color: COLORS.danger }}> *</span>}
+    </label>
+    <input type={type} value={value} onChange={e => onChange(e.target.value)}
+      style={{
+        width: "100%", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+        padding: "9px 12px", color: COLORS.text, fontSize: 13, outline: "none", boxSizing: "border-box",
+      }}
+      onFocus={e => e.target.style.borderColor = COLORS.accent}
+      onBlur={e => e.target.style.borderColor = COLORS.border}
+    />
+  </div>
+);
+
+const FormSelect = ({ label, value, onChange, options, required }) => (
+  <div style={{ marginBottom: 14 }}>
+    <label style={{ display: "block", fontSize: 11, color: COLORS.textMuted, marginBottom: 5, fontWeight: 700, letterSpacing: 0.5 }}>
+      {label}{required && <span style={{ color: COLORS.danger }}> *</span>}
+    </label>
+    <select value={value} onChange={e => onChange(e.target.value)}
+      style={{
+        width: "100%", background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 8,
+        padding: "9px 12px", color: COLORS.text, fontSize: 13, outline: "none", boxSizing: "border-box",
+      }}
+    >
+      <option value="">選択してください</option>
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  </div>
+);
+
+const Modal = ({ title, onClose, children }) => (
+  <div style={{
+    position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000,
+    display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+  }} onClick={onClose}>
+    <div style={{
+      background: COLORS.surface, border: `1px solid ${COLORS.border}`, borderRadius: 16,
+      padding: 28, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto",
+      boxShadow: `0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px ${COLORS.accentGlow}`,
+    }} onClick={e => e.stopPropagation()}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+        <h3 style={{ margin: 0, color: COLORS.text, fontSize: 16, fontWeight: 800 }}>{title}</h3>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: COLORS.textMuted, cursor: "pointer", fontSize: 20 }}>×</button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
+const Btn = ({ onClick, children, variant = "primary", small }) => {
+  const styles = {
+    primary: { background: COLORS.accent, color: "#000", border: "none" },
+    secondary: { background: "transparent", color: COLORS.accent, border: `1px solid ${COLORS.accentDim}` },
+    danger: { background: COLORS.danger, color: "#fff", border: "none" },
+    ghost: { background: COLORS.surface, color: COLORS.text, border: `1px solid ${COLORS.border}` },
+  };
+  return (
+    <button onClick={onClick} style={{
+      ...styles[variant], padding: small ? "6px 14px" : "10px 20px", borderRadius: 8,
+      fontWeight: 700, fontSize: small ? 12 : 13, cursor: "pointer", letterSpacing: 0.3,
+      transition: "opacity 0.15s",
+    }}
+      onMouseEnter={e => e.currentTarget.style.opacity = "0.85"}
+      onMouseLeave={e => e.currentTarget.style.opacity = "1"}
+    >{children}</button>
+  );
+};
+
+// ============================================================
+// PAGES
+// ============================================================
+
+// DASHBOARD
+const Dashboard = ({ data, setPage }) => {
+  const permitPct = Math.round((data.permit.used / data.permit.annual) * 100);
+  const totalStock = data.pools.reduce((s, p) => s + p.current, 0);
+  const totalWeight = data.pools.reduce((s, p) => s + p.weight, 0);
+  const monthShipping = data.shippingRecords.reduce((s, r) => s + r.price, 0);
+  const activeMeds = data.medicines.filter(m => m.status === "active").length;
+
+  const alertItems = [];
+  if (permitPct >= 80) alertItems.push({ level: "warn", msg: `許可枠使用率 ${permitPct}%` });
+  if (activeMeds > 0) alertItems.push({ level: "warn", msg: `薬品使用中 ${activeMeds}品目（出荷制限あり）` });
+  data.pools.filter(p => p.status === "warning").forEach(p => alertItems.push({ level: "warn", msg: `${p.name} 状態注意` }));
+
+  return (
+    <div>
+      {/* Alerts */}
+      {alertItems.length > 0 && (
+        <div style={{ background: "rgba(240,165,0,0.08)", border: `1px solid rgba(240,165,0,0.3)`, borderRadius: 10, padding: "12px 16px", marginBottom: 24 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.warning, marginBottom: 8, letterSpacing: 0.8 }}>⚠ アラート</div>
+          {alertItems.map((a, i) => (
+            <div key={i} style={{ fontSize: 13, color: COLORS.warning, marginBottom: 4 }}>・{a.msg}</div>
+          ))}
+        </div>
+      )}
+
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14, marginBottom: 28 }}>
+        <StatCard icon="🐟" label="総在鰻数" value={totalStock.toLocaleString()} sub="尾" onClick={() => setPage("stock")} />
+        <StatCard icon="⚖️" label="総重量" value={`${totalWeight.toLocaleString()}`} sub="kg" />
+        <StatCard icon="📋" label="許可枠使用率" value={`${permitPct}%`} sub={`${data.permit.used.toLocaleString()} / ${data.permit.annual.toLocaleString()} kg`}
+          color={permitPct >= 90 ? COLORS.danger : permitPct >= 80 ? COLORS.warning : COLORS.accent}
+          onClick={() => setPage("permit")} />
+        <StatCard icon="💴" label="今月出荷額" value={`¥${(monthShipping / 10000).toFixed(0)}万`} sub="円" onClick={() => setPage("shipping")} />
+        <StatCard icon="💊" label="薬品使用中" value={activeMeds} sub="品目" color={activeMeds > 0 ? COLORS.warning : COLORS.accent} onClick={() => setPage("medicine")} />
+        <StatCard icon="🏭" label="稼働池数" value={data.pools.length} sub="池" onClick={() => setPage("stock")} />
+      </div>
+
+      {/* Permit Bar */}
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "18px 22px", marginBottom: 20 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.text }}>年間許可枠使用状況</span>
+          <span style={{ fontSize: 13, color: COLORS.textMuted }}>許可番号 {data.permit.number}</span>
+        </div>
+        <ProgressBar pct={permitPct} color={permitPct >= 90 ? COLORS.danger : permitPct >= 80 ? COLORS.warning : COLORS.accent} height={14} />
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>使用済 {data.permit.used.toLocaleString()} kg</span>
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>残 {(data.permit.annual - data.permit.used).toLocaleString()} kg / 年間 {data.permit.annual.toLocaleString()} kg</span>
+        </div>
+      </div>
+
+      {/* Pool Summary */}
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "18px 22px", marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text, marginBottom: 14 }}>池別在鰻状況</div>
+        {data.pools.map(pool => {
+          const pct = Math.round((pool.current / pool.capacity) * 100);
+          return (
+            <div key={pool.id} style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                <span style={{ fontSize: 13, color: COLORS.text }}>{pool.name}</span>
+                <span style={{ fontSize: 12, color: COLORS.textMuted }}>
+                  {pool.current.toLocaleString()}尾 / {pool.capacity.toLocaleString()}尾
+                  &nbsp;<Badge color={pool.status === "warning" ? "yellow" : "green"}>{pool.status === "warning" ? "注意" : "正常"}</Badge>
+                </span>
+              </div>
+              <ProgressBar pct={pct} color={pct >= 90 ? COLORS.warning : COLORS.accent} height={6} />
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Recent Activity */}
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "18px 22px" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text, marginBottom: 14 }}>直近の活動</div>
+        {[
+          ...data.stockRecords.slice(-2).map(r => ({ date: r.date, icon: "🐟", text: `池入れ: ${r.supplier} → ${r.pool} (${r.qty.toLocaleString()}尾)` })),
+          ...data.shippingRecords.slice(-2).map(r => ({ date: r.date, icon: "📦", text: `出荷: ${r.destination} (${r.kg}kg / ¥${r.price.toLocaleString()})` })),
+          ...data.deathRecords.slice(-2).map(r => ({ date: r.date, icon: "⚠️", text: `死亡記録: ${r.pool} ${r.count}尾 (${r.cause})` })),
+        ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5).map((a, i) => (
+          <div key={i} style={{ display: "flex", gap: 12, marginBottom: 10, alignItems: "flex-start" }}>
+            <span>{a.icon}</span>
+            <div>
+              <div style={{ fontSize: 13, color: COLORS.text }}>{a.text}</div>
+              <div style={{ fontSize: 11, color: COLORS.textDim }}>{a.date}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// STOCK (池入れ・在鰻管理)
+const StockPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ date: "", supplier: "", pool: "", lot: "", qty: "", kg: "", avgSize: "", staff: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+  const totalStock = data.pools.reduce((s, p) => s + p.current, 0);
+
+  const handleSubmit = () => {
+    const newRecord = { id: `SI${String(data.stockRecords.length + 1).padStart(3, "0")}`, ...form, qty: Number(form.qty), kg: Number(form.kg) };
+    setData(prev => ({
+      ...prev,
+      stockRecords: [...prev.stockRecords, newRecord],
+      permit: { ...prev.permit, used: prev.permit.used + Number(form.kg) },
+      pools: prev.pools.map(p => p.id === form.pool ? { ...p, current: p.current + Number(form.qty), weight: p.weight + Number(form.kg) } : p),
+    }));
+    setShowModal(false);
+    setForm({ date: "", supplier: "", pool: "", lot: "", qty: "", kg: "", avgSize: "", staff: "" });
+  };
+
+  return (
+    <div>
+      <SectionHeader title="池入れ・在鰻管理" sub="許可枠・在庫を自動更新" />
+
+      {/* Monthly Calc */}
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "16px 22px", marginBottom: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.textMuted, marginBottom: 10, letterSpacing: 0.8 }}>月次在庫計算（自動）</div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 13 }}>
+          <span style={{ color: COLORS.textMuted }}>前月在庫</span>
+          <span style={{ color: COLORS.text, fontWeight: 700 }}>38,700</span>
+          <span style={{ color: COLORS.textDim }}>＋ 池入れ</span>
+          <span style={{ color: COLORS.accent, fontWeight: 700 }}>+4,700</span>
+          <span style={{ color: COLORS.textDim }}>－ 死亡</span>
+          <span style={{ color: COLORS.danger, fontWeight: 700 }}>-57</span>
+          <span style={{ color: COLORS.textDim }}>－ 出荷</span>
+          <span style={{ color: COLORS.warning, fontWeight: 700 }}>-800</span>
+          <span style={{ color: COLORS.textDim }}>＝</span>
+          <span style={{ color: COLORS.text, fontWeight: 800, fontSize: 16 }}>{totalStock.toLocaleString()}</span>
+          <span style={{ color: COLORS.textMuted }}>尾</span>
+        </div>
+      </div>
+
+      {/* Pool Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
+        {data.pools.map(pool => {
+          const pct = Math.round((pool.current / pool.capacity) * 100);
+          return (
+            <div key={pool.id} style={{ background: COLORS.card, border: `1px solid ${pool.status === "warning" ? "rgba(240,165,0,0.4)" : COLORS.border}`, borderRadius: 10, padding: "14px 16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.text }}>{pool.name}</span>
+                <Badge color={pool.status === "warning" ? "yellow" : "green"}>{pct}%</Badge>
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.accent, fontFamily: "monospace" }}>{pool.current.toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 8 }}>{pool.weight}kg / 容量{pool.capacity.toLocaleString()}尾</div>
+              <ProgressBar pct={pct} color={pct >= 90 ? COLORS.warning : COLORS.accent} />
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Btn onClick={() => setShowModal(true)}>＋ 池入れ記録</Btn>
+      </div>
+
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ padding: "16px 22px", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13, fontWeight: 700, color: COLORS.text }}>池入れ記録一覧</div>
+        <Table
+          cols={[
+            { key: "id", label: "ID" },
+            { key: "date", label: "日付" },
+            { key: "supplier", label: "仕入先" },
+            { key: "pool", label: "池" },
+            { key: "lot", label: "ロット" },
+            { key: "qty", label: "尾数", render: r => r.qty.toLocaleString() },
+            { key: "kg", label: "kg" },
+            { key: "staff", label: "担当" },
+          ]}
+          rows={data.stockRecords}
+        />
+      </div>
+
+      {showModal && (
+        <Modal title="池入れ記録" onClose={() => setShowModal(false)}>
+          <FormInput label="池入れ日" value={form.date} onChange={f("date")} type="date" required />
+          <FormInput label="仕入先" value={form.supplier} onChange={f("supplier")} required />
+          <FormSelect label="池番号" value={form.pool} onChange={f("pool")} required
+            options={data.pools.map(p => ({ value: p.id, label: `${p.id} ${p.name}` }))} />
+          <FormInput label="ロット番号" value={form.lot} onChange={f("lot")} required />
+          <FormInput label="池入れ尾数" value={form.qty} onChange={f("qty")} type="number" required />
+          <FormInput label="重量 (kg)" value={form.kg} onChange={f("kg")} type="number" required />
+          <FormInput label="平均サイズ" value={form.avgSize} onChange={f("avgSize")} />
+          <FormInput label="担当者" value={form.staff} onChange={f("staff")} required />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// SHIPPING
+const ShippingPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ date: "", destination: "", pool: "", lot: "", qty: "", kg: "", price: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleSubmit = () => {
+    const newRecord = { id: `SH${String(data.shippingRecords.length + 1).padStart(3, "0")}`, ...form, qty: Number(form.qty), kg: Number(form.kg), price: Number(form.price) };
+    setData(prev => ({
+      ...prev,
+      shippingRecords: [...prev.shippingRecords, newRecord],
+      pools: prev.pools.map(p => p.id === form.pool ? { ...p, current: Math.max(0, p.current - Number(form.qty)) } : p),
+    }));
+    setShowModal(false);
+    setForm({ date: "", destination: "", pool: "", lot: "", qty: "", kg: "", price: "" });
+  };
+
+  const totalSales = data.shippingRecords.reduce((s, r) => s + r.price, 0);
+
+  return (
+    <div>
+      <SectionHeader title="出荷管理" sub="トレーサビリティ付き出荷記録" />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14, marginBottom: 24 }}>
+        <StatCard icon="📦" label="累計出荷件数" value={data.shippingRecords.length} sub="件" />
+        <StatCard icon="💴" label="累計出荷額" value={`¥${(totalSales / 10000).toFixed(1)}万`} sub="円" />
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Btn onClick={() => setShowModal(true)}>＋ 出荷記録</Btn>
+      </div>
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <Table
+          cols={[
+            { key: "id", label: "ID" },
+            { key: "date", label: "出荷日" },
+            { key: "destination", label: "出荷先" },
+            { key: "pool", label: "池" },
+            { key: "lot", label: "ロット" },
+            { key: "qty", label: "尾数", render: r => r.qty.toLocaleString() },
+            { key: "kg", label: "kg" },
+            { key: "price", label: "金額", render: r => `¥${r.price.toLocaleString()}` },
+          ]}
+          rows={data.shippingRecords}
+        />
+      </div>
+
+      {showModal && (
+        <Modal title="出荷記録" onClose={() => setShowModal(false)}>
+          <FormInput label="出荷日" value={form.date} onChange={f("date")} type="date" required />
+          <FormInput label="出荷先" value={form.destination} onChange={f("destination")} required />
+          <FormSelect label="池番号" value={form.pool} onChange={f("pool")} required
+            options={data.pools.map(p => ({ value: p.id, label: `${p.id} ${p.name}` }))} />
+          <FormInput label="ロット番号" value={form.lot} onChange={f("lot")} required />
+          <FormInput label="出荷尾数" value={form.qty} onChange={f("qty")} type="number" required />
+          <FormInput label="重量 (kg)" value={form.kg} onChange={f("kg")} type="number" required />
+          <FormInput label="金額 (円)" value={form.price} onChange={f("price")} type="number" required />
+          <div style={{ background: "rgba(52,152,219,0.08)", border: `1px solid rgba(52,152,219,0.2)`, borderRadius: 8, padding: "10px 14px", marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: COLORS.info, fontWeight: 700, marginBottom: 4 }}>トレーサビリティ</div>
+            <div style={{ fontSize: 12, color: COLORS.textMuted }}>池番号 → 池入れ情報 → 仕入先 まで自動紐付けされます</div>
+          </div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// WATER QUALITY
+const WaterPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [selPool, setSelPool] = useState("P01");
+  const [form, setForm] = useState({ date: "", pool: "P01", temp: "", ph: "", do: "", nh3: "", no2: "", salt: "", exchange: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+
+  const poolData = data.waterQuality.filter(w => w.pool === selPool);
+  const latest = poolData[poolData.length - 1];
+
+  const handleSubmit = () => {
+    setData(prev => ({ ...prev, waterQuality: [...prev.waterQuality, { ...form, temp: +form.temp, ph: +form.ph, do: +form.do, nh3: +form.nh3, no2: +form.no2, salt: +form.salt, exchange: +form.exchange }] }));
+    setShowModal(false);
+  };
+
+  const isAbnormal = (key, val) => {
+    const limits = { ph: [6.5, 8.0], do: [6, 99], nh3: [0, 0.1], no2: [0, 0.1] };
+    if (!limits[key]) return false;
+    return val < limits[key][0] || val > limits[key][1];
+  };
+
+  return (
+    <div>
+      <SectionHeader title="水質管理" sub="毎日の測定データを記録・異常値警告" />
+
+      {/* Pool selector */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap" }}>
+        {data.pools.map(p => (
+          <button key={p.id} onClick={() => setSelPool(p.id)}
+            style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${selPool === p.id ? COLORS.accent : COLORS.border}`, background: selPool === p.id ? COLORS.accentGlow : "transparent", color: selPool === p.id ? COLORS.accent : COLORS.textMuted, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+            {p.name}
+          </button>
+        ))}
+      </div>
+
+      {latest && (
+        <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "18px 22px", marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: COLORS.textMuted, marginBottom: 12, fontWeight: 700 }}>最新測定値 — {latest.date}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(100px, 1fr))", gap: 12 }}>
+            {[
+              { k: "temp", label: "水温", unit: "℃" },
+              { k: "ph", label: "pH", unit: "" },
+              { k: "do", label: "DO", unit: "mg/L" },
+              { k: "nh3", label: "NH₃", unit: "mg/L" },
+              { k: "no2", label: "NO₂", unit: "mg/L" },
+              { k: "salt", label: "塩分", unit: "%" },
+              { k: "exchange", label: "換水量", unit: "%" },
+            ].map(({ k, label, unit }) => {
+              const abnormal = isAbnormal(k, latest[k]);
+              return (
+                <div key={k} style={{ background: abnormal ? "rgba(231,76,60,0.08)" : COLORS.surface, border: `1px solid ${abnormal ? "rgba(231,76,60,0.3)" : COLORS.border}`, borderRadius: 8, padding: "10px 12px", textAlign: "center" }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: abnormal ? COLORS.danger : COLORS.accent, fontFamily: "monospace" }}>{latest[k]}</div>
+                  <div style={{ fontSize: 10, color: COLORS.textMuted }}>{label} {unit}</div>
+                  {abnormal && <div style={{ fontSize: 9, color: COLORS.danger, marginTop: 2 }}>⚠ 異常</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Simple trend table */}
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 20 }}>
+        <div style={{ padding: "16px 22px", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13, fontWeight: 700, color: COLORS.text }}>測定履歴</div>
+        <Table
+          cols={[
+            { key: "date", label: "日付" },
+            { key: "temp", label: "水温℃" },
+            { key: "ph", label: "pH" },
+            { key: "do", label: "DO" },
+            { key: "nh3", label: "NH₃", color: r => isAbnormal("nh3", r.nh3) ? COLORS.danger : COLORS.text },
+            { key: "no2", label: "NO₂", color: r => isAbnormal("no2", r.no2) ? COLORS.danger : COLORS.text },
+            { key: "exchange", label: "換水%" },
+          ]}
+          rows={poolData}
+        />
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <Btn onClick={() => setShowModal(true)}>＋ 水質測定記録</Btn>
+      </div>
+
+      {showModal && (
+        <Modal title="水質測定記録" onClose={() => setShowModal(false)}>
+          <FormInput label="測定日" value={form.date} onChange={f("date")} type="date" required />
+          <FormSelect label="池" value={form.pool} onChange={f("pool")} options={data.pools.map(p => ({ value: p.id, label: p.name }))} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <FormInput label="水温 (℃)" value={form.temp} onChange={f("temp")} type="number" />
+            <FormInput label="pH" value={form.ph} onChange={f("ph")} type="number" />
+            <FormInput label="DO (mg/L)" value={form.do} onChange={f("do")} type="number" />
+            <FormInput label="NH₃ (mg/L)" value={form.nh3} onChange={f("nh3")} type="number" />
+            <FormInput label="NO₂ (mg/L)" value={form.no2} onChange={f("no2")} type="number" />
+            <FormInput label="塩分 (%)" value={form.salt} onChange={f("salt")} type="number" />
+          </div>
+          <FormInput label="換水量 (%)" value={form.exchange} onChange={f("exchange")} type="number" />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// DEATH RECORDS
+const DeathPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ date: "", pool: "", count: "", cause: "", staff: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+  const totalDeath = data.deathRecords.reduce((s, r) => s + r.count, 0);
+  const totalStock = data.pools.reduce((s, p) => s + p.current, 0);
+
+  const handleSubmit = () => {
+    const newRecord = { id: `D${String(data.deathRecords.length + 1).padStart(3, "0")}`, ...form, count: Number(form.count) };
+    setData(prev => ({
+      ...prev,
+      deathRecords: [...prev.deathRecords, newRecord],
+      pools: prev.pools.map(p => p.id === form.pool ? { ...p, current: Math.max(0, p.current - Number(form.count)) } : p),
+    }));
+    setShowModal(false);
+    setForm({ date: "", pool: "", count: "", cause: "", staff: "" });
+  };
+
+  return (
+    <div>
+      <SectionHeader title="死魚管理" sub="死亡記録・在庫自動反映" />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14, marginBottom: 24 }}>
+        <StatCard icon="📉" label="累計死亡数" value={totalDeath.toLocaleString()} sub="尾" color={COLORS.danger} />
+        <StatCard icon="📊" label="死亡率" value={`${((totalDeath / (totalStock + totalDeath)) * 100).toFixed(2)}%`} sub="累計" color={COLORS.warning} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Btn onClick={() => setShowModal(true)}>＋ 死亡記録</Btn>
+      </div>
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <Table
+          cols={[
+            { key: "id", label: "ID" },
+            { key: "date", label: "日付" },
+            { key: "pool", label: "池" },
+            { key: "count", label: "死亡数", render: r => r.count.toLocaleString(), color: () => COLORS.danger },
+            { key: "cause", label: "推定原因" },
+            { key: "staff", label: "担当" },
+          ]}
+          rows={data.deathRecords}
+        />
+      </div>
+      {showModal && (
+        <Modal title="死亡記録" onClose={() => setShowModal(false)}>
+          <FormInput label="死亡確認日" value={form.date} onChange={f("date")} type="date" required />
+          <FormSelect label="池" value={form.pool} onChange={f("pool")} options={data.pools.map(p => ({ value: p.id, label: p.name }))} required />
+          <FormInput label="死亡尾数" value={form.count} onChange={f("count")} type="number" required />
+          <FormInput label="推定原因" value={form.cause} onChange={f("cause")} />
+          <FormInput label="担当者" value={form.staff} onChange={f("staff")} required />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit} variant="danger">記録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// MEDICINE
+const MedicinePage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ name: "", pool: "", useDate: "", amount: "", purpose: "", withdrawDays: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleSubmit = () => {
+    const clearDate = new Date(form.useDate);
+    clearDate.setDate(clearDate.getDate() + Number(form.withdrawDays));
+    const newMed = {
+      id: `M${String(data.medicines.length + 1).padStart(3, "0")}`, ...form,
+      withdrawDays: Number(form.withdrawDays),
+      clearDate: clearDate.toISOString().slice(0, 10),
+      status: "active",
+    };
+    setData(prev => ({ ...prev, medicines: [...prev.medicines, newMed] }));
+    setShowModal(false);
+    setForm({ name: "", pool: "", useDate: "", amount: "", purpose: "", withdrawDays: "" });
+  };
+
+  return (
+    <div>
+      <SectionHeader title="薬品・休薬期間管理" sub="出荷制限期間を自動計算" />
+      <div style={{ background: "rgba(231,76,60,0.06)", border: `1px solid rgba(231,76,60,0.2)`, borderRadius: 10, padding: "12px 16px", marginBottom: 20 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.danger, marginBottom: 6 }}>⚠ 出荷制限中の池</div>
+        {data.medicines.filter(m => m.status === "active").length === 0
+          ? <div style={{ fontSize: 13, color: COLORS.textMuted }}>現在出荷制限なし</div>
+          : data.medicines.filter(m => m.status === "active").map(m => (
+            <div key={m.id} style={{ fontSize: 13, color: COLORS.danger }}>
+              {m.pool} — {m.name} 休薬解除: {m.clearDate}
+            </div>
+          ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Btn onClick={() => setShowModal(true)}>＋ 薬品使用記録</Btn>
+      </div>
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <Table
+          cols={[
+            { key: "id", label: "ID" },
+            { key: "useDate", label: "使用日" },
+            { key: "name", label: "薬品名" },
+            { key: "pool", label: "池" },
+            { key: "amount", label: "使用量" },
+            { key: "withdrawDays", label: "休薬(日)" },
+            { key: "clearDate", label: "解除日" },
+            { key: "status", label: "状態", render: r => <Badge color={r.status === "active" ? "red" : "green"}>{r.status === "active" ? "制限中" : "解除済"}</Badge> },
+          ]}
+          rows={data.medicines}
+        />
+      </div>
+      {showModal && (
+        <Modal title="薬品使用記録" onClose={() => setShowModal(false)}>
+          <FormInput label="薬品名" value={form.name} onChange={f("name")} required />
+          <FormSelect label="使用池" value={form.pool} onChange={f("pool")} options={data.pools.map(p => ({ value: p.id, label: p.name }))} required />
+          <FormInput label="使用日" value={form.useDate} onChange={f("useDate")} type="date" required />
+          <FormInput label="使用量" value={form.amount} onChange={f("amount")} required />
+          <FormInput label="使用目的" value={form.purpose} onChange={f("purpose")} />
+          <FormInput label="休薬期間（日）" value={form.withdrawDays} onChange={f("withdrawDays")} type="number" required />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// PERMIT
+const PermitPage = ({ data }) => {
+  const pct = Math.round((data.permit.used / data.permit.annual) * 100);
+  const remaining = data.permit.annual - data.permit.used;
+  return (
+    <div>
+      <SectionHeader title="許可枠管理" sub="指定養殖業許可証・年間池入れ枠管理" />
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "24px", marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20 }}>
+          <div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>許可番号</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.gold }}>{data.permit.number}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>更新期限</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.text }}>{data.permit.expiry}</div>
+          </div>
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.text }}>年間池入れ許可枠</span>
+            <span style={{ fontSize: 20, fontWeight: 800, color: pct >= 90 ? COLORS.danger : pct >= 80 ? COLORS.warning : COLORS.accent }}>
+              {pct}%
+            </span>
+          </div>
+          <ProgressBar pct={pct} height={16} color={pct >= 90 ? COLORS.danger : pct >= 80 ? COLORS.warning : COLORS.accent} />
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 13 }}>
+            <span style={{ color: COLORS.textMuted }}>使用済: {data.permit.used.toLocaleString()} kg</span>
+            <span style={{ color: COLORS.textMuted }}>残: {remaining.toLocaleString()} kg / 年間 {data.permit.annual.toLocaleString()} kg</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          {[{ pct: 80, color: COLORS.warning }, { pct: 90, color: COLORS.danger }, { pct: 100, color: COLORS.danger }].map(({ pct: threshold, color }) => (
+            <div key={threshold} style={{ flex: 1, background: pct >= threshold ? "rgba(231,76,60,0.1)" : COLORS.surface, border: `1px solid ${pct >= threshold ? "rgba(231,76,60,0.3)" : COLORS.border}`, borderRadius: 8, padding: "10px", textAlign: "center" }}>
+              <div style={{ fontSize: 18, fontWeight: 800, color: pct >= threshold ? COLORS.danger : COLORS.textDim }}>{threshold}%</div>
+              <div style={{ fontSize: 10, color: pct >= threshold ? COLORS.danger : COLORS.textDim }}>{pct >= threshold ? "⚠ 到達" : "未到達"}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// SUBSIDY
+const SubsidyPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ name: "", equipment: "", orderDate: "", deliveryDate: "", paymentDate: "", amount: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+
+  const handleSubmit = () => {
+    const newSub = { id: `SB${String(data.subsidies.length + 1).padStart(3, "0")}`, ...form, amount: Number(form.amount), status: "in_progress" };
+    setData(prev => ({ ...prev, subsidies: [...prev.subsidies, newSub] }));
+    setShowModal(false);
+    setForm({ name: "", equipment: "", orderDate: "", deliveryDate: "", paymentDate: "", amount: "" });
+  };
+
+  return (
+    <div>
+      <SectionHeader title="補助金管理" sub="証憑一元管理・実績報告対応" />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Btn onClick={() => setShowModal(true)}>＋ 補助事業登録</Btn>
+      </div>
+      {data.subsidies.map(sub => (
+        <div key={sub.id} style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "20px 22px", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.text }}>{sub.name}</div>
+            <Badge color={sub.status === "completed" ? "green" : "yellow"}>{sub.status === "completed" ? "完了" : "進行中"}</Badge>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 12 }}>
+            {[
+              { label: "対象設備", val: sub.equipment },
+              { label: "発注日", val: sub.orderDate },
+              { label: "納品日", val: sub.deliveryDate },
+              { label: "支払日", val: sub.paymentDate },
+              { label: "補助金額", val: `¥${sub.amount.toLocaleString()}` },
+            ].map(({ label, val }) => (
+              <div key={label}>
+                <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 2 }}>{label}</div>
+                <div style={{ fontSize: 13, color: COLORS.text, fontWeight: 600 }}>{val}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {["見積書", "契約書", "納品書", "請求書", "振込記録"].map(doc => (
+              <Badge key={doc} color={sub.status === "completed" ? "green" : "blue"}>{doc} ✓</Badge>
+            ))}
+          </div>
+        </div>
+      ))}
+      {showModal && (
+        <Modal title="補助事業登録" onClose={() => setShowModal(false)}>
+          <FormInput label="補助事業名" value={form.name} onChange={f("name")} required />
+          <FormInput label="対象設備" value={form.equipment} onChange={f("equipment")} required />
+          <FormInput label="発注日" value={form.orderDate} onChange={f("orderDate")} type="date" />
+          <FormInput label="納品日" value={form.deliveryDate} onChange={f("deliveryDate")} type="date" />
+          <FormInput label="支払日" value={form.paymentDate} onChange={f("paymentDate")} type="date" />
+          <FormInput label="補助金額 (円)" value={form.amount} onChange={f("amount")} type="number" />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// AUDIT
+const AuditPage = ({ data }) => {
+  const totalStock = data.pools.reduce((s, p) => s + p.current, 0);
+  const totalWeight = data.pools.reduce((s, p) => s + p.weight, 0);
+  const totalIn = data.stockRecords.reduce((s, r) => s + r.qty, 0);
+  const totalOut = data.shippingRecords.reduce((s, r) => s + r.qty, 0);
+  const totalDead = data.deathRecords.reduce((s, r) => s + r.count, 0);
+
+  return (
+    <div>
+      <SectionHeader title="監査対応・月次照合" sub="行政・税務・金融機関対応帳票" />
+
+      <div style={{ background: "rgba(212,175,55,0.08)", border: `1px solid rgba(212,175,55,0.25)`, borderRadius: 12, padding: "20px 22px", marginBottom: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.gold, marginBottom: 14, letterSpacing: 0.8 }}>月次在庫照合レポート — 2026年5月</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 14 }}>
+          {[
+            { label: "前月在庫", val: "38,700尾", color: COLORS.text },
+            { label: "＋ 池入れ", val: `+${totalIn.toLocaleString()}尾`, color: COLORS.accent },
+            { label: "－ 死亡", val: `-${totalDead}尾`, color: COLORS.danger },
+            { label: "－ 出荷", val: `-${totalOut}尾`, color: COLORS.warning },
+            { label: "＝ 理論在庫", val: `${totalStock.toLocaleString()}尾`, color: COLORS.gold },
+            { label: "実際在庫", val: `${totalStock.toLocaleString()}尾`, color: COLORS.gold },
+            { label: "差異", val: "0尾", color: COLORS.accent },
+          ].map(({ label, val, color }) => (
+            <div key={label} style={{ background: COLORS.card, borderRadius: 8, padding: "10px 14px" }}>
+              <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 4 }}>{label}</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color, fontFamily: "monospace" }}>{val}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+        {[
+          { title: "行政対応資料", items: ["指定養殖業許可証", "池入れ報告書", "在鰻管理表", "死亡記録", "出荷記録", "実績報告書"], color: COLORS.info },
+          { title: "税務・金融対応資料", items: ["請求書一覧", "納品書一覧", "振込記録", "棚卸資産一覧", "売上台帳", "経費台帳"], color: COLORS.gold },
+        ].map(section => (
+          <div key={section.title} style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "18px 20px" }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: section.color, marginBottom: 12 }}>{section.title}</div>
+            {section.items.map(item => (
+              <div key={item} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13 }}>
+                <span style={{ color: COLORS.text }}>{item}</span>
+                <Btn variant="secondary" small>出力</Btn>
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "18px 22px" }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text, marginBottom: 14 }}>池別管理表</div>
+        <Table
+          cols={[
+            { key: "id", label: "池番号" },
+            { key: "name", label: "池名" },
+            { key: "current", label: "現在庫(尾)", render: r => r.current.toLocaleString() },
+            { key: "weight", label: "重量(kg)" },
+            { key: "capacity", label: "容量(尾)", render: r => r.capacity.toLocaleString() },
+            { key: "status", label: "状態", render: r => <Badge color={r.status === "warning" ? "yellow" : "green"}>{r.status === "warning" ? "注意" : "正常"}</Badge> },
+          ]}
+          rows={data.pools}
+        />
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// FEEDING PAGE
+// ============================================================
+const FeedingPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ date: "", pool: "", feed: "", amount: "", staff: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+
+  const feedRecords = data.feedRecords || [];
+  const totalFeed = feedRecords.reduce((s, r) => s + Number(r.amount), 0);
+
+  const handleSubmit = () => {
+    const rec = { id: `F${String(feedRecords.length + 1).padStart(3, "0")}`, ...form, amount: Number(form.amount) };
+    setData(prev => ({ ...prev, feedRecords: [...(prev.feedRecords || []), rec] }));
+    setShowModal(false);
+    setForm({ date: "", pool: "", feed: "", amount: "", staff: "" });
+  };
+
+  const totalWeight = data.pools.reduce((s, p) => s + p.weight, 0);
+  const fcr = totalWeight > 0 ? (totalFeed / totalWeight).toFixed(2) : "—";
+
+  return (
+    <div>
+      <SectionHeader title="給餌管理" sub="FCR・成長率・飼料消費量分析" />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))", gap: 14, marginBottom: 24 }}>
+        <StatCard icon="🌾" label="累計給餌量" value={`${totalFeed.toLocaleString()}`} sub="kg" />
+        <StatCard icon="📈" label="FCR (飼料転換率)" value={fcr} sub="kg飼料/kg増肉" color={COLORS.info} />
+        <StatCard icon="📅" label="給餌記録件数" value={feedRecords.length} sub="件" />
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Btn onClick={() => setShowModal(true)}>＋ 給餌記録</Btn>
+      </div>
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <Table
+          cols={[
+            { key: "id", label: "ID" },
+            { key: "date", label: "給餌日" },
+            { key: "pool", label: "池" },
+            { key: "feed", label: "飼料名" },
+            { key: "amount", label: "給餌量(kg)", render: r => r.amount.toLocaleString() },
+            { key: "staff", label: "担当" },
+          ]}
+          rows={feedRecords}
+          emptyMsg="給餌記録なし。右上ボタンから追加してください。"
+        />
+      </div>
+      {showModal && (
+        <Modal title="給餌記録" onClose={() => setShowModal(false)}>
+          <FormInput label="給餌日" value={form.date} onChange={f("date")} type="date" required />
+          <FormSelect label="池" value={form.pool} onChange={f("pool")} required
+            options={data.pools.map(p => ({ value: p.id, label: p.name }))} />
+          <FormInput label="飼料名" value={form.feed} onChange={f("feed")} required />
+          <FormInput label="給餌量 (kg)" value={form.amount} onChange={f("amount")} type="number" required />
+          <FormInput label="担当者" value={form.staff} onChange={f("staff")} required />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// PROCESSING PAGE（加工管理）
+// ============================================================
+const ProcessingPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ receiveDate: "", processDate: "", pool: "", lot: "", inputKg: "", outputKg: "", product: "", staff: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+  const records = data.processingRecords || [];
+
+  const handleSubmit = () => {
+    const yield_ = form.inputKg > 0 ? ((form.outputKg / form.inputKg) * 100).toFixed(1) : 0;
+    const rec = { id: `PR${String(records.length + 1).padStart(3, "0")}`, ...form, inputKg: +form.inputKg, outputKg: +form.outputKg, yieldPct: yield_ };
+    setData(prev => ({ ...prev, processingRecords: [...(prev.processingRecords || []), rec] }));
+    setShowModal(false);
+    setForm({ receiveDate: "", processDate: "", pool: "", lot: "", inputKg: "", outputKg: "", product: "", staff: "" });
+  };
+
+  const avgYield = records.length > 0
+    ? (records.reduce((s, r) => s + Number(r.yieldPct), 0) / records.length).toFixed(1)
+    : "—";
+
+  return (
+    <div>
+      <SectionHeader title="加工管理" sub="搬入→加工→製品ロット・歩留まり管理" />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))", gap: 14, marginBottom: 24 }}>
+        <StatCard icon="🏭" label="加工ロット数" value={records.length} sub="件" />
+        <StatCard icon="📊" label="平均歩留まり" value={`${avgYield}%`} sub="" color={COLORS.gold} />
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Btn onClick={() => setShowModal(true)}>＋ 加工記録</Btn>
+      </div>
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <Table
+          cols={[
+            { key: "id", label: "ID" },
+            { key: "processDate", label: "加工日" },
+            { key: "pool", label: "池" },
+            { key: "lot", label: "ロット" },
+            { key: "inputKg", label: "投入量(kg)" },
+            { key: "outputKg", label: "製品量(kg)" },
+            { key: "yieldPct", label: "歩留まり(%)", color: () => COLORS.gold },
+            { key: "product", label: "製品種別" },
+          ]}
+          rows={records}
+          emptyMsg="加工記録なし"
+        />
+      </div>
+
+      {/* Traceability Demo */}
+      {records.length > 0 && (
+        <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "18px 22px", marginTop: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text, marginBottom: 14 }}>🔍 トレーサビリティ逆追跡（直近ロット）</div>
+          {(() => {
+            const last = records[records.length - 1];
+            const stockRec = data.stockRecords.find(s => s.pool === last.pool);
+            const steps = [
+              { label: "製品", val: last.product || "—", icon: "📦" },
+              { label: "加工日", val: last.processDate, icon: "🏭" },
+              { label: "池番号", val: last.pool, icon: "🐠" },
+              { label: "池入れ日", val: stockRec?.date || "—", icon: "📅" },
+              { label: "仕入先", val: stockRec?.supplier || "—", icon: "🏢" },
+            ];
+            return (
+              <div style={{ display: "flex", gap: 0, flexWrap: "wrap" }}>
+                {steps.map((s, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center" }}>
+                    <div style={{ background: COLORS.surface, border: `1px solid ${COLORS.accentDim}`, borderRadius: 8, padding: "8px 14px", textAlign: "center", minWidth: 90 }}>
+                      <div style={{ fontSize: 16 }}>{s.icon}</div>
+                      <div style={{ fontSize: 10, color: COLORS.textMuted }}>{s.label}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.accent }}>{s.val}</div>
+                    </div>
+                    {i < steps.length - 1 && <div style={{ color: COLORS.accentDim, fontSize: 18, padding: "0 6px" }}>→</div>}
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {showModal && (
+        <Modal title="加工記録" onClose={() => setShowModal(false)}>
+          <FormInput label="搬入日" value={form.receiveDate} onChange={f("receiveDate")} type="date" required />
+          <FormInput label="加工日" value={form.processDate} onChange={f("processDate")} type="date" required />
+          <FormSelect label="池番号" value={form.pool} onChange={f("pool")} required
+            options={data.pools.map(p => ({ value: p.id, label: p.name }))} />
+          <FormInput label="ロット番号" value={form.lot} onChange={f("lot")} required />
+          <FormInput label="投入量 (kg)" value={form.inputKg} onChange={f("inputKg")} type="number" required />
+          <FormInput label="製品量 (kg)" value={form.outputKg} onChange={f("outputKg")} type="number" required />
+          <FormInput label="製品種別" value={form.product} onChange={f("product")} />
+          <FormInput label="担当者" value={form.staff} onChange={f("staff")} required />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// HACCP PAGE
+// ============================================================
+const HACCPPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [tab, setTab] = useState("ccp");
+  const [form, setForm] = useState({ date: "", type: "ccp", item: "", result: "", standard: "", action: "", staff: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+  const haccpRecords = data.haccpRecords || [];
+
+  const handleSubmit = () => {
+    const rec = { id: `HC${String(haccpRecords.length + 1).padStart(3, "0")}`, ...form };
+    setData(prev => ({ ...prev, haccpRecords: [...(prev.haccpRecords || []), rec] }));
+    setShowModal(false);
+    setForm({ date: "", type: "ccp", item: "", result: "", standard: "", action: "", staff: "" });
+  };
+
+  const ccpItems = [
+    { no: "CCP1", name: "蒸し工程温度管理", standard: "85℃以上・15分以上", freq: "毎バッチ" },
+    { no: "CCP2", name: "たれ加熱温度", standard: "80℃以上", freq: "毎日" },
+    { no: "CCP3", name: "冷却温度管理", standard: "3℃以下・2時間以内", freq: "毎バッチ" },
+    { no: "CCP4", name: "金属探知機", standard: "Fe1.5mm以下不通過", freq: "毎製品" },
+  ];
+
+  return (
+    <div>
+      <SectionHeader title="HACCP管理" sub="CCP管理・衛生点検・是正記録" />
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+        {[{ id: "ccp", label: "CCP管理点" }, { id: "sanitation", label: "衛生点検" }, { id: "records", label: "記録一覧" }].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "7px 16px", borderRadius: 8, border: `1px solid ${tab === t.id ? COLORS.accent : COLORS.border}`, background: tab === t.id ? COLORS.accentGlow : "transparent", color: tab === t.id ? COLORS.accent : COLORS.textMuted, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "ccp" && (
+        <div>
+          {ccpItems.map(ccp => (
+            <div key={ccp.no} style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "14px 18px", marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+              <div>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                  <Badge color="blue">{ccp.no}</Badge>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.text }}>{ccp.name}</span>
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted }}>基準: {ccp.standard} | 頻度: {ccp.freq}</div>
+              </div>
+              <Badge color="green">管理中</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "sanitation" && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px,1fr))", gap: 12 }}>
+          {[
+            { item: "作業場床面清掃", status: "済", date: "2026-06-05" },
+            { item: "排水溝清掃", status: "済", date: "2026-06-05" },
+            { item: "手洗い設備点検", status: "済", date: "2026-06-05" },
+            { item: "冷蔵庫温度確認", status: "済", date: "2026-06-05" },
+            { item: "害虫トラップ確認", status: "未", date: "—" },
+            { item: "従業員健康確認", status: "済", date: "2026-06-05" },
+          ].map(s => (
+            <div key={s.item} style={{ background: COLORS.card, border: `1px solid ${s.status === "済" ? COLORS.border : "rgba(231,76,60,0.3)"}`, borderRadius: 10, padding: "14px" }}>
+              <div style={{ fontSize: 13, color: COLORS.text, marginBottom: 8 }}>{s.item}</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Badge color={s.status === "済" ? "green" : "red"}>{s.status === "済" ? "✓ 完了" : "未実施"}</Badge>
+                <span style={{ fontSize: 11, color: COLORS.textDim }}>{s.date}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "records" && (
+        <div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 14 }}>
+            <Btn onClick={() => setShowModal(true)}>＋ 記録追加</Btn>
+          </div>
+          <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+            <Table
+              cols={[
+                { key: "id", label: "ID" },
+                { key: "date", label: "日付" },
+                { key: "type", label: "区分", render: r => <Badge color="blue">{r.type.toUpperCase()}</Badge> },
+                { key: "item", label: "管理項目" },
+                { key: "result", label: "測定値" },
+                { key: "standard", label: "基準値" },
+                { key: "action", label: "是正措置" },
+                { key: "staff", label: "担当" },
+              ]}
+              rows={haccpRecords}
+              emptyMsg="記録なし"
+            />
+          </div>
+        </div>
+      )}
+
+      {showModal && (
+        <Modal title="HACCP記録" onClose={() => setShowModal(false)}>
+          <FormInput label="実施日" value={form.date} onChange={f("date")} type="date" required />
+          <FormSelect label="区分" value={form.type} onChange={f("type")}
+            options={[{ value: "ccp", label: "CCP管理" }, { value: "sanitation", label: "衛生管理" }, { value: "temp", label: "温度管理" }]} />
+          <FormInput label="管理項目" value={form.item} onChange={f("item")} required />
+          <FormInput label="測定値" value={form.result} onChange={f("result")} required />
+          <FormInput label="基準値" value={form.standard} onChange={f("standard")} />
+          <FormInput label="是正措置" value={form.action} onChange={f("action")} />
+          <FormInput label="担当者" value={form.staff} onChange={f("staff")} required />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// CONSIGNMENT PAGE（委託養殖管理）
+// ============================================================
+const ConsignmentPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ month: "", farm: "", owner: "", manager: "", permitPool: "", stockIn: "", stockCurrent: "", death: "", shipped: "", note: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+  const records = data.consignmentRecords || [];
+
+  const farms = [
+    { id: "IF01", name: "イールファーム", owner: "花立山養鰻", manager: "田中", permitPool: "P05", contract: "2026-01-01", note: "杉樽工程委託" },
+  ];
+
+  const handleSubmit = () => {
+    const rec = { id: `CS${String(records.length + 1).padStart(3, "0")}`, ...form, stockIn: +form.stockIn, stockCurrent: +form.stockCurrent, death: +form.death, shipped: +form.shipped };
+    setData(prev => ({ ...prev, consignmentRecords: [...(prev.consignmentRecords || []), rec] }));
+    setShowModal(false);
+    setForm({ month: "", farm: "", owner: "", manager: "", permitPool: "", stockIn: "", stockCurrent: "", death: "", shipped: "", note: "" });
+  };
+
+  return (
+    <div>
+      <SectionHeader title="委託養殖管理" sub="外部養殖場の所有権・許可枠・月次報告管理" />
+
+      {farms.map(farm => (
+        <div key={farm.id} style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: "20px 22px", marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.text }}>{farm.name}</div>
+            <Badge color="gold">委託中</Badge>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px,1fr))", gap: 12, marginBottom: 14 }}>
+            {[
+              { label: "所有者", val: farm.owner },
+              { label: "管理責任者", val: farm.manager },
+              { label: "使用許可枠", val: farm.permitPool },
+              { label: "契約開始", val: farm.contract },
+              { label: "備考", val: farm.note },
+            ].map(({ label, val }) => (
+              <div key={label}>
+                <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 2 }}>{label}</div>
+                <div style={{ fontSize: 13, color: COLORS.text, fontWeight: 600 }}>{val}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <Badge color="green">池入れ報告 ✓</Badge>
+            <Badge color="green">在鰻報告 ✓</Badge>
+            <Badge color="yellow">死亡報告 要提出</Badge>
+            <Badge color="green">出荷報告 ✓</Badge>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <Btn onClick={() => setShowModal(true)}>＋ 月次報告登録</Btn>
+      </div>
+
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ padding: "14px 22px", borderBottom: `1px solid ${COLORS.border}`, fontSize: 13, fontWeight: 700, color: COLORS.text }}>月次報告一覧</div>
+        <Table
+          cols={[
+            { key: "id", label: "ID" },
+            { key: "month", label: "報告月" },
+            { key: "farm", label: "養殖場" },
+            { key: "stockIn", label: "池入れ(尾)", render: r => r.stockIn.toLocaleString() },
+            { key: "stockCurrent", label: "在鰻(尾)", render: r => r.stockCurrent.toLocaleString() },
+            { key: "death", label: "死亡(尾)", color: () => COLORS.danger },
+            { key: "shipped", label: "出荷(尾)", color: () => COLORS.warning },
+          ]}
+          rows={records}
+          emptyMsg="月次報告なし"
+        />
+      </div>
+
+      {showModal && (
+        <Modal title="月次報告登録" onClose={() => setShowModal(false)}>
+          <FormInput label="報告月 (YYYY-MM)" value={form.month} onChange={f("month")} required />
+          <FormInput label="養殖場名" value={form.farm} onChange={f("farm")} required />
+          <FormInput label="池入れ尾数" value={form.stockIn} onChange={f("stockIn")} type="number" />
+          <FormInput label="在鰻尾数" value={form.stockCurrent} onChange={f("stockCurrent")} type="number" />
+          <FormInput label="死亡尾数" value={form.death} onChange={f("death")} type="number" />
+          <FormInput label="出荷尾数" value={form.shipped} onChange={f("shipped")} type="number" />
+          <FormInput label="備考" value={form.note} onChange={f("note")} />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// FINANCE PAGE（財務管理）
+// ============================================================
+const FinancePage = ({ data, setData }) => {
+  const [tab, setTab] = useState("invoice");
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ date: "", type: "invoice", counterpart: "", amount: "", desc: "", status: "unpaid" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+  const finRecords = data.financeRecords || [
+    { id: "FN001", date: "2026-05-10", type: "invoice", counterpart: "福岡淡水株式会社", amount: 420000, desc: "クロコ仕入れ代金", status: "paid" },
+    { id: "FN002", date: "2026-05-20", type: "receipt", counterpart: "タイセイ株式会社", amount: 375000, desc: "ウナギ出荷代金", status: "paid" },
+    { id: "FN003", date: "2026-05-28", type: "invoice", counterpart: "愛知養鰻", amount: 180000, desc: "稚鰻仕入れ代金", status: "unpaid" },
+  ];
+
+  const totalIncome = finRecords.filter(r => r.type === "receipt").reduce((s, r) => s + r.amount, 0);
+  const totalExpense = finRecords.filter(r => r.type === "invoice").reduce((s, r) => s + r.amount, 0);
+  const unpaid = finRecords.filter(r => r.status === "unpaid").reduce((s, r) => s + r.amount, 0);
+
+  const handleSubmit = () => {
+    const rec = { id: `FN${String(finRecords.length + 1).padStart(3, "0")}`, ...form, amount: +form.amount };
+    setData(prev => ({ ...prev, financeRecords: [...(prev.financeRecords || finRecords), rec] }));
+    setShowModal(false);
+    setForm({ date: "", type: "invoice", counterpart: "", amount: "", desc: "", status: "unpaid" });
+  };
+
+  const displayRecords = (data.financeRecords || finRecords).filter(r => tab === "all" || r.type === tab);
+
+  return (
+    <div>
+      <SectionHeader title="財務管理" sub="請求書・納品書・振込記録の一元管理" />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px,1fr))", gap: 14, marginBottom: 24 }}>
+        <StatCard icon="💰" label="累計売上" value={`¥${(totalIncome / 10000).toFixed(1)}万`} sub="" color={COLORS.accent} />
+        <StatCard icon="💳" label="累計仕入" value={`¥${(totalExpense / 10000).toFixed(1)}万`} sub="" color={COLORS.info} />
+        <StatCard icon="⏳" label="未払残高" value={`¥${(unpaid / 10000).toFixed(1)}万`} sub="" color={unpaid > 0 ? COLORS.warning : COLORS.accent} />
+        <StatCard icon="📈" label="粗利" value={`¥${((totalIncome - totalExpense) / 10000).toFixed(1)}万`} sub="" color={totalIncome - totalExpense >= 0 ? COLORS.accent : COLORS.danger} />
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {[{ id: "all", label: "全件" }, { id: "invoice", label: "請求書（仕入）" }, { id: "receipt", label: "売上" }].map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${tab === t.id ? COLORS.accent : COLORS.border}`, background: tab === t.id ? COLORS.accentGlow : "transparent", color: tab === t.id ? COLORS.accent : COLORS.textMuted, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+            {t.label}
+          </button>
+        ))}
+        <div style={{ flex: 1 }} />
+        <Btn onClick={() => setShowModal(true)}>＋ 記録追加</Btn>
+      </div>
+
+      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: "hidden" }}>
+        <Table
+          cols={[
+            { key: "id", label: "ID" },
+            { key: "date", label: "日付" },
+            { key: "type", label: "区分", render: r => <Badge color={r.type === "receipt" ? "green" : "blue"}>{r.type === "receipt" ? "売上" : "仕入"}</Badge> },
+            { key: "counterpart", label: "取引先" },
+            { key: "amount", label: "金額", render: r => `¥${r.amount.toLocaleString()}`, color: r => r.type === "receipt" ? COLORS.accent : COLORS.info },
+            { key: "desc", label: "摘要" },
+            { key: "status", label: "状態", render: r => <Badge color={r.status === "paid" ? "green" : "yellow"}>{r.status === "paid" ? "支払済" : "未払"}</Badge> },
+          ]}
+          rows={displayRecords}
+        />
+      </div>
+
+      {showModal && (
+        <Modal title="財務記録追加" onClose={() => setShowModal(false)}>
+          <FormInput label="日付" value={form.date} onChange={f("date")} type="date" required />
+          <FormSelect label="区分" value={form.type} onChange={f("type")}
+            options={[{ value: "invoice", label: "仕入（請求書）" }, { value: "receipt", label: "売上" }, { value: "expense", label: "経費" }]} />
+          <FormInput label="取引先" value={form.counterpart} onChange={f("counterpart")} required />
+          <FormInput label="金額 (円)" value={form.amount} onChange={f("amount")} type="number" required />
+          <FormInput label="摘要" value={form.desc} onChange={f("desc")} />
+          <FormSelect label="支払状態" value={form.status} onChange={f("status")}
+            options={[{ value: "unpaid", label: "未払" }, { value: "paid", label: "支払済" }]} />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// DOCUMENTS PAGE（電子証憑管理）
+// ============================================================
+const DocumentsPage = ({ data, setData }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterType, setFilterType] = useState("all");
+  const [form, setForm] = useState({ date: "", type: "invoice", title: "", counterpart: "", lot: "", pool: "", note: "" });
+  const f = (k) => (v) => setForm(p => ({ ...p, [k]: v }));
+
+  const docs = data.documents || [
+    { id: "DOC001", date: "2026-04-15", type: "delivery", title: "納品書 L2026-041", counterpart: "福岡淡水株式会社", lot: "L2026-041", pool: "P01", note: "" },
+    { id: "DOC002", date: "2026-04-15", type: "invoice", title: "請求書 #2026-04-001", counterpart: "福岡淡水株式会社", lot: "L2026-041", pool: "P01", note: "" },
+    { id: "DOC003", date: "2026-05-10", type: "stockin", title: "池入れ報告書 L2026-051", counterpart: "", lot: "L2026-051", pool: "P02", note: "" },
+    { id: "DOC004", date: "2026-05-20", type: "shipping", title: "出荷伝票 SH001", counterpart: "タイセイ株式会社", lot: "L2026-041", pool: "P01", note: "" },
+    { id: "DOC005", date: "2026-03-20", type: "subsidy", title: "補助金納品書 杉樽設備", counterpart: "設備業者A", lot: "", pool: "", note: "令和6年度補助金" },
+    { id: "DOC006", date: "2026-01-10", type: "contract", title: "委託養殖契約書 イールファーム", counterpart: "イールファーム", lot: "", pool: "P05", note: "" },
+  ];
+
+  const typeMap = {
+    all: "全件",
+    invoice: "請求書",
+    delivery: "納品書",
+    stockin: "池入れ報告書",
+    shipping: "出荷伝票",
+    contract: "契約書",
+    subsidy: "補助金資料",
+    transfer: "振込記録",
+  };
+
+  const typeColor = { invoice: "blue", delivery: "green", stockin: "gold", shipping: "yellow", contract: "red", subsidy: "gold", transfer: "blue" };
+
+  const filtered = (data.documents || docs).filter(d => {
+    const matchType = filterType === "all" || d.type === filterType;
+    const q = search.toLowerCase();
+    const matchSearch = !q || d.title.toLowerCase().includes(q) || d.counterpart.toLowerCase().includes(q) || d.lot.toLowerCase().includes(q) || d.pool.toLowerCase().includes(q);
+    return matchType && matchSearch;
+  });
+
+  const handleSubmit = () => {
+    const rec = { id: `DOC${String((data.documents || docs).length + 1).padStart(3, "0")}`, ...form };
+    setData(prev => ({ ...prev, documents: [...(prev.documents || docs), rec] }));
+    setShowModal(false);
+    setForm({ date: "", type: "invoice", title: "", counterpart: "", lot: "", pool: "", note: "" });
+  };
+
+  return (
+    <div>
+      <SectionHeader title="電子証憑管理" sub="日付・取引先・ロット・池番号で即時検索" />
+
+      {/* Search */}
+      <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
+        <input
+          placeholder="🔍 タイトル・取引先・ロット番号・池番号で検索..."
+          value={search} onChange={e => setSearch(e.target.value)}
+          style={{ flex: 1, minWidth: 200, background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "9px 14px", color: COLORS.text, fontSize: 13, outline: "none" }}
+          onFocus={e => e.target.style.borderColor = COLORS.accent}
+          onBlur={e => e.target.style.borderColor = COLORS.border}
+        />
+        <select value={filterType} onChange={e => setFilterType(e.target.value)}
+          style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: "9px 14px", color: COLORS.text, fontSize: 12, outline: "none" }}>
+          {Object.entries(typeMap).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </select>
+        <Btn onClick={() => setShowModal(true)}>＋ 証憑登録</Btn>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px,1fr))", gap: 12, marginBottom: 20 }}>
+        {Object.entries(typeMap).filter(([k]) => k !== "all").map(([k, v]) => {
+          const count = (data.documents || docs).filter(d => d.type === k).length;
+          return (
+            <div key={k} onClick={() => setFilterType(k)} style={{ background: filterType === k ? COLORS.accentGlow : COLORS.card, border: `1px solid ${filterType === k ? COLORS.accentDim : COLORS.border}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", transition: "all 0.15s" }}>
+              <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.accent, fontFamily: "monospace" }}>{count}</div>
+              <div style={{ fontSize: 11, color: COLORS.textMuted }}>{v}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px,1fr))", gap: 12 }}>
+        {filtered.map(doc => (
+          <div key={doc.id} style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: "14px 16px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.text, flex: 1 }}>{doc.title}</div>
+              <Badge color={typeColor[doc.type] || "blue"}>{typeMap[doc.type]}</Badge>
+            </div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {doc.date && <span style={{ fontSize: 11, color: COLORS.textDim }}>📅 {doc.date}</span>}
+              {doc.counterpart && <span style={{ fontSize: 11, color: COLORS.textDim }}>🏢 {doc.counterpart}</span>}
+              {doc.lot && <span style={{ fontSize: 11, color: COLORS.textDim }}>📦 {doc.lot}</span>}
+              {doc.pool && <span style={{ fontSize: 11, color: COLORS.textDim }}>🐠 {doc.pool}</span>}
+            </div>
+            {doc.note && <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 6 }}>{doc.note}</div>}
+            <div style={{ marginTop: 10, display: "flex", gap: 6 }}>
+              <Btn variant="secondary" small>閲覧</Btn>
+              <Btn variant="ghost" small>ダウンロード</Btn>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ gridColumn: "1/-1", textAlign: "center", padding: 40, color: COLORS.textDim }}>該当する証憑が見つかりません</div>
+        )}
+      </div>
+
+      {showModal && (
+        <Modal title="証憑登録" onClose={() => setShowModal(false)}>
+          <FormInput label="日付" value={form.date} onChange={f("date")} type="date" required />
+          <FormSelect label="種別" value={form.type} onChange={f("type")}
+            options={Object.entries(typeMap).filter(([k]) => k !== "all").map(([k, v]) => ({ value: k, label: v }))} />
+          <FormInput label="タイトル" value={form.title} onChange={f("title")} required />
+          <FormInput label="取引先" value={form.counterpart} onChange={f("counterpart")} />
+          <FormInput label="ロット番号" value={form.lot} onChange={f("lot")} />
+          <FormInput label="池番号" value={form.pool} onChange={f("pool")} />
+          <FormInput label="備考" value={form.note} onChange={f("note")} />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+            <Btn variant="ghost" onClick={() => setShowModal(false)}>キャンセル</Btn>
+            <Btn onClick={handleSubmit}>登録</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ============================================================
+// MAIN APP
+// ============================================================
+const NAV = [
+  { id: "dashboard", label: "ダッシュボード", icon: "📊" },
+  { id: "stock", label: "池入れ・在鰻", icon: "🐟" },
+  { id: "shipping", label: "出荷管理", icon: "📦" },
+  { id: "feeding", label: "給餌管理", icon: "🌾" },
+  { id: "processing", label: "加工管理", icon: "🏭" },
+  { id: "water", label: "水質管理", icon: "💧" },
+  { id: "death", label: "死魚管理", icon: "📉" },
+  { id: "medicine", label: "薬品管理", icon: "💊" },
+  { id: "haccp", label: "HACCP管理", icon: "✅" },
+  { id: "consignment", label: "委託養殖", icon: "🤝" },
+  { id: "finance", label: "財務管理", icon: "💴" },
+  { id: "documents", label: "電子証憑", icon: "🗂" },
+  { id: "permit", label: "許可枠管理", icon: "📋" },
+  { id: "subsidy", label: "補助金管理", icon: "🏛" },
+  { id: "audit", label: "監査対応", icon: "🔍" },
+];
+
+export default function App() {
+  const [page, setPage] = useState("dashboard");
+  const [data, setData] = useState(INITIAL_DATA);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const current = NAV.find(n => n.id === page);
+
+  const renderPage = () => {
+    const props = { data, setData, setPage };
+    switch (page) {
+      case "dashboard": return <Dashboard {...props} />;
+      case "stock": return <StockPage {...props} />;
+      case "shipping": return <ShippingPage {...props} />;
+      case "feeding": return <FeedingPage {...props} />;
+      case "processing": return <ProcessingPage {...props} />;
+      case "water": return <WaterPage {...props} />;
+      case "death": return <DeathPage {...props} />;
+      case "medicine": return <MedicinePage {...props} />;
+      case "haccp": return <HACCPPage {...props} />;
+      case "consignment": return <ConsignmentPage {...props} />;
+      case "finance": return <FinancePage {...props} />;
+      case "documents": return <DocumentsPage {...props} />;
+      case "permit": return <PermitPage {...props} />;
+      case "subsidy": return <SubsidyPage {...props} />;
+      case "audit": return <AuditPage {...props} />;
+      default: return null;
+    }
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: COLORS.bg, color: COLORS.text, fontFamily: "'Noto Sans JP', 'Hiragino Sans', sans-serif", display: "flex" }}>
+      {/* Sidebar */}
+      <div style={{
+        width: 220, background: COLORS.surface, borderRight: `1px solid ${COLORS.border}`,
+        display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, bottom: 0, zIndex: 100,
+      }}>
+        {/* Logo */}
+        <div style={{ padding: "22px 20px 16px", borderBottom: `1px solid ${COLORS.border}` }}>
+          <div style={{ fontSize: 11, color: COLORS.accent, fontWeight: 700, letterSpacing: 2, marginBottom: 2 }}>HANADATEYAMA</div>
+          <div style={{ fontSize: 13, color: COLORS.text, fontWeight: 800 }}>養鰻統合ERPシステム</div>
+          <div style={{ fontSize: 10, color: COLORS.textDim, marginTop: 3 }}>株式会社花立山養鰻</div>
+        </div>
+
+        {/* Nav */}
+        <nav style={{ flex: 1, padding: "12px 10px", overflowY: "auto" }}>
+          {NAV.map(item => {
+            const active = page === item.id;
+            return (
+              <button key={item.id} onClick={() => setPage(item.id)} style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", borderRadius: 8,
+                background: active ? COLORS.accentGlow : "transparent", border: active ? `1px solid ${COLORS.accentDim}` : "1px solid transparent",
+                color: active ? COLORS.accent : COLORS.textMuted, cursor: "pointer", fontSize: 13, fontWeight: active ? 700 : 500,
+                marginBottom: 2, textAlign: "left", transition: "all 0.15s",
+              }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.color = COLORS.text; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.color = COLORS.textMuted; }}
+              >
+                <span style={{ fontSize: 15 }}>{item.icon}</span>
+                {item.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Footer */}
+        <div style={{ padding: "12px 16px", borderTop: `1px solid ${COLORS.border}`, fontSize: 10, color: COLORS.textDim }}>
+          v1.0 © 2026 花立山養鰻
+        </div>
+      </div>
+
+      {/* Main */}
+      <div style={{ marginLeft: 220, flex: 1, display: "flex", flexDirection: "column" }}>
+        {/* Header */}
+        <div style={{
+          background: COLORS.surface, borderBottom: `1px solid ${COLORS.border}`,
+          padding: "14px 28px", display: "flex", justifyContent: "space-between", alignItems: "center",
+          position: "sticky", top: 0, zIndex: 50,
+        }}>
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.text }}>{current?.icon} {current?.label}</div>
+            <div style={{ fontSize: 11, color: COLORS.textDim, marginTop: 2 }}>2026年6月5日 更新</div>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div style={{ width: 8, height: 8, borderRadius: 99, background: COLORS.accent, boxShadow: `0 0 8px ${COLORS.accent}` }} />
+            <span style={{ fontSize: 12, color: COLORS.textMuted }}>システム稼働中</span>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{ padding: "24px 28px", flex: 1, overflowY: "auto" }}>
+          {renderPage()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+const rootEl = document.getElementById("root");
+ReactDOM.createRoot(rootEl).render(<App/>);
+</script>
+</body>
+</html>
